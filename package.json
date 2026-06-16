@@ -1,0 +1,10 @@
+{
+  "name": "vexperio-db",
+  "private": true,
+  "workspaces": [
+    "excel-addin"
+  ],
+  "scripts": {
+    "start": "cd excel-addin && npm start"
+  }
+}
