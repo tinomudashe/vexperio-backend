@@ -1,42 +1,26 @@
-"""Media upload router — stores task attachments in Cloudflare R2 / S3.
+"""Media upload router — stores task attachments in UploadThing.
 
 Requires environment variables:
-- S3_BUCKET_NAME
-- S3_ENDPOINT_URL
-- S3_ACCESS_KEY
-- S3_SECRET_KEY
+- UPLOADTHING_TOKEN
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException
 import os
-import uuid
-import boto3
-from botocore.exceptions import ClientError
+import requests
 
 router = APIRouter(prefix="/upload", tags=["media"])
 
-S3_BUCKET = os.getenv("S3_BUCKET_NAME", "")
-S3_ENDPOINT = os.getenv("S3_ENDPOINT_URL", "")
-S3_ACCESS = os.getenv("S3_ACCESS_KEY", "")
-S3_SECRET = os.getenv("S3_SECRET_KEY", "")
-S3_PUBLIC_URL = os.getenv("S3_PUBLIC_URL", "")
+UPLOADTHING_TOKEN = os.getenv("UPLOADTHING_TOKEN", "")
 
 MAX_BYTES   = 10 * 1024 * 1024   # 10 MB
 ALLOWED     = {"image/jpeg", "image/png", "image/gif", "image/webp", "image/svg+xml"}
-EXT_MAP     = {
-    "image/jpeg":    "jpg",
-    "image/png":     "png",
-    "image/gif":     "gif",
-    "image/webp":    "webp",
-    "image/svg+xml": "svg",
-}
 
 @router.post("/image")
 async def upload_image(file: UploadFile = File(...)):
-    """Accept an image file, upload to S3/R2, return { url, name }."""
-    if not S3_BUCKET or not S3_ENDPOINT:
+    """Accept an image file, upload to UploadThing, return { url, name }."""
+    if not UPLOADTHING_TOKEN:
         raise HTTPException(
             status_code=503,
-            detail="Media storage not configured — set S3_BUCKET_NAME and S3_ENDPOINT_URL."
+            detail="Media storage not configured — set UPLOADTHING_TOKEN."
         )
 
     content_type = (file.content_type or "").split(";")[0].strip().lower()
@@ -50,31 +34,30 @@ async def upload_image(file: UploadFile = File(...)):
     if len(data) > MAX_BYTES:
         raise HTTPException(status_code=413, detail=f"File too large (max {MAX_BYTES // 1024 // 1024} MB).")
 
-    ext       = EXT_MAP.get(content_type, "bin")
-    blob_name = f"task-attachments/{uuid.uuid4().hex}.{ext}"
-
-    s3_client = boto3.client(
-        "s3",
-        endpoint_url=S3_ENDPOINT,
-        aws_access_key_id=S3_ACCESS,
-        aws_secret_access_key=S3_SECRET,
-        region_name="auto"
-    )
-
+    # Upload to UploadThing via their REST API
     try:
-        s3_client.put_object(
-            Bucket=S3_BUCKET,
-            Key=blob_name,
-            Body=data,
-            ContentType=content_type
+        response = requests.post(
+            "https://uploadthing.com/api/uploadFiles",
+            headers={"x-uploadthing-api-key": UPLOADTHING_TOKEN},
+            files={"files": (file.filename or "upload.bin", data, content_type)}
         )
-        if S3_PUBLIC_URL:
-            public_url = f"{S3_PUBLIC_URL.rstrip('/')}/{blob_name}"
+        response.raise_for_status()
+        result = response.json()
+        
+        # UploadThing returns a list of objects like [{"url": "...", "name": "..."}]
+        if isinstance(result, list) and len(result) > 0:
+            file_info = result[0]
+            # Replace utfs.io with ufs.sh which is the standard now, although both work.
+            file_url = file_info.get("url") or file_info.get("fileUrl")
+            if not file_url:
+                # Some older api versions return fileUrl
+                raise Exception("No URL returned from UploadThing")
+            
+            return {"url": file_url, "name": file_info.get("name", file.filename)}
         else:
-            public_url = f"{S3_ENDPOINT.rstrip('/')}/{S3_BUCKET}/{blob_name}"
+            raise Exception("Invalid response from UploadThing API")
 
-        return {"url": public_url, "name": file.filename or blob_name}
-    except ClientError as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+    except requests.exceptions.RequestException as e:
+        raise HTTPException(status_code=500, detail=f"Upload failed (Network): {str(e)}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Upload failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
