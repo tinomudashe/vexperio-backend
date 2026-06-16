@@ -8,7 +8,7 @@ from api.routers import (
     pricing, workflow, reference, media, users, guidelines
 )
 
-models.Base.metadata.create_all(bind=engine)
+# models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
     title="Vexperio Tour Operations API",
