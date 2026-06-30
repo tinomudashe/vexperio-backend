@@ -61,25 +61,49 @@ from api.database import get_db
 @app.get("/migrate-platforms", tags=["migration"])
 def migrate_platforms(db: "sqlalchemy.orm.Session" = Depends(get_db)):
     from sqlalchemy import text
-    sql_commands = [
-        "ALTER TABLE platform ADD COLUMN IF NOT EXISTS short_code TEXT;",
-        "ALTER TABLE platform ADD COLUMN IF NOT EXISTS icon_url TEXT;",
-        "ALTER TABLE platform ADD COLUMN IF NOT EXISTS domain TEXT;",
-        "ALTER TABLE platform ADD COLUMN IF NOT EXISTS supplier_url_prefix TEXT;",
-        "ALTER TABLE platform ADD COLUMN IF NOT EXISTS valid_statuses JSONB;",
-        "ALTER TABLE platform ADD COLUMN IF NOT EXISTS id_placeholder TEXT;",
-        "ALTER TABLE platform ADD COLUMN IF NOT EXISTS id_hint TEXT;",
-        "ALTER TABLE platform ADD COLUMN IF NOT EXISTS color_theme TEXT;",
-        "UPDATE platform SET short_code = 'GY', domain = 'getyourguide.com', supplier_url_prefix = 'https://supplier.getyourguide.com', valid_statuses = '[\"ACTIVE\", \"INACTIVE\"]'::jsonb, id_placeholder = '674024', color_theme = 'gyg' WHERE name = 'GetYourGuide';",
-        "UPDATE platform SET short_code = 'VI', domain = 'viator.com', supplier_url_prefix = 'https://supplier.viator.com', valid_statuses = '[\"ACTIVE\", \"INACTIVE\"]'::jsonb, id_placeholder = 'P138', color_theme = 'via' WHERE name = 'Viator';",
-        "UPDATE platform SET short_code = 'PE', domain = 'projectexpedition.com', valid_statuses = '[\"ACTIVE\", \"INACTIVE\"]'::jsonb, id_placeholder = 'PRD...', color_theme = 'pe' WHERE name IN ('PE', 'Project Expedition');",
-        "UPDATE platform SET short_code = 'VX', color_theme = 'vex' WHERE name = 'Vexperio';"
-    ]
     try:
-        for cmd in sql_commands:
+        # Create columns (no colons here so safe to use text directly)
+        columns_sql = [
+            "ALTER TABLE platform ADD COLUMN IF NOT EXISTS short_code TEXT;",
+            "ALTER TABLE platform ADD COLUMN IF NOT EXISTS icon_url TEXT;",
+            "ALTER TABLE platform ADD COLUMN IF NOT EXISTS domain TEXT;",
+            "ALTER TABLE platform ADD COLUMN IF NOT EXISTS supplier_url_prefix TEXT;",
+            "ALTER TABLE platform ADD COLUMN IF NOT EXISTS valid_statuses JSON;",
+            "ALTER TABLE platform ADD COLUMN IF NOT EXISTS id_placeholder TEXT;",
+            "ALTER TABLE platform ADD COLUMN IF NOT EXISTS id_hint TEXT;",
+            "ALTER TABLE platform ADD COLUMN IF NOT EXISTS color_theme TEXT;"
+        ]
+        for cmd in columns_sql:
             db.execute(text(cmd))
+            
+        # Update existing data using parameterized queries to avoid colon syntax issues in text()
+        update_sql = text("""
+            UPDATE platform 
+            SET short_code = :sc, domain = :dom, supplier_url_prefix = :sup, 
+                valid_statuses = CAST(:vs AS JSON), id_placeholder = :ph, color_theme = :ct 
+            WHERE name = :name;
+        """)
+        
+        updates = [
+            {"name": "GetYourGuide", "sc": "GY", "dom": "getyourguide.com", "sup": "https://supplier.getyourguide.com", "vs": '["ACTIVE", "INACTIVE"]', "ph": "674024", "ct": "gyg"},
+            {"name": "Viator", "sc": "VI", "dom": "viator.com", "sup": "https://supplier.viator.com", "vs": '["ACTIVE", "INACTIVE"]', "ph": "P138", "ct": "via"},
+            {"name": "Vexperio", "sc": "VX", "dom": None, "sup": None, "vs": None, "ph": None, "ct": "vex"}
+        ]
+        
+        for params in updates:
+            db.execute(update_sql, params)
+            
+        # Handle PE which has multiple names
+        update_pe_sql = text("""
+            UPDATE platform 
+            SET short_code = 'PE', domain = 'projectexpedition.com', 
+                valid_statuses = CAST('["ACTIVE", "INACTIVE"]' AS JSON), id_placeholder = 'PRD...', color_theme = 'pe' 
+            WHERE name IN ('PE', 'Project Expedition');
+        """)
+        db.execute(update_pe_sql)
+
         db.commit()
         return {"status": "success", "message": "Platform columns and metadata migrated successfully!"}
     except Exception as e:
         db.rollback()
-        return {"status": "error", "message": str(e)}
+        return {"status": "error", "message": str(e), "type": type(e).__name__}
