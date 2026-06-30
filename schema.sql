@@ -27,7 +27,15 @@ CREATE TABLE platform (
     platform_id         SERIAL PRIMARY KEY,
     name                TEXT NOT NULL UNIQUE,  -- Vexperio | GetYourGuide | Viator | Project Expedition
     commission_pct      NUMERIC(6,4),          -- fallback default; overrides live in platform_commission
-    applies_commission  BOOLEAN NOT NULL DEFAULT TRUE  -- FALSE for Vexperio (in-house)
+    applies_commission  BOOLEAN NOT NULL DEFAULT TRUE,  -- FALSE for Vexperio (in-house)
+    short_code          TEXT,
+    icon_url            TEXT,
+    domain              TEXT,
+    supplier_url_prefix TEXT,
+    valid_statuses      JSONB,
+    id_placeholder      TEXT,
+    id_hint             TEXT,
+    color_theme         TEXT
 );
 
 -- Logical shore-excursion families

@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, Numeric, Date, Time,
-    DateTime, Text, ForeignKey, UniqueConstraint
+    DateTime, Text, ForeignKey, UniqueConstraint, JSON
 )
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
@@ -25,6 +25,14 @@ class Platform(Base):
     name = Column(String, nullable=False, unique=True)
     commission_pct = Column(Numeric(6, 4))
     applies_commission = Column(Boolean, nullable=False, default=True)
+    short_code = Column(String)
+    icon_url = Column(String)
+    domain = Column(String)
+    supplier_url_prefix = Column(String)
+    valid_statuses = Column(JSON)
+    id_placeholder = Column(String)
+    id_hint = Column(String)
+    color_theme = Column(String)
 
 
 class User(Base):

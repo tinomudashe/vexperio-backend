@@ -48,11 +48,40 @@ class ShipOut(BaseModel):
 
 # ── Platform ───────────────────────────────────────────────────────────────
 
-class PlatformOut(BaseModel):
-    platform_id: int
+class PlatformBase(BaseModel):
     name: str
-    commission_pct: Optional[Decimal]
-    applies_commission: bool
+    commission_pct: Optional[Decimal] = None
+    applies_commission: bool = True
+    short_code: Optional[str] = None
+    icon_url: Optional[str] = None
+    domain: Optional[str] = None
+    supplier_url_prefix: Optional[str] = None
+    valid_statuses: Optional[list[str]] = None
+    id_placeholder: Optional[str] = None
+    id_hint: Optional[str] = None
+    color_theme: Optional[str] = None
+
+
+class PlatformCreate(PlatformBase):
+    pass
+
+
+class PlatformPatch(BaseModel):
+    name: Optional[str] = None
+    commission_pct: Optional[Decimal] = None
+    applies_commission: Optional[bool] = None
+    short_code: Optional[str] = None
+    icon_url: Optional[str] = None
+    domain: Optional[str] = None
+    supplier_url_prefix: Optional[str] = None
+    valid_statuses: Optional[list[str]] = None
+    id_placeholder: Optional[str] = None
+    id_hint: Optional[str] = None
+    color_theme: Optional[str] = None
+
+
+class PlatformOut(PlatformBase):
+    platform_id: int
     model_config = {"from_attributes": True}
 
 

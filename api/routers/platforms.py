@@ -4,7 +4,7 @@ from typing import List, Optional
 from api.database import get_db
 from api.models import Platform, PlatformTour, PlatformOption, PlatformCommission, Discount, SchedulePlatformEntry
 from api.schemas import (
-    PlatformOut, PlatformTourOut, PlatformOptionOut, PlatformOptionCreate, PlatformOptionPatch,
+    PlatformOut, PlatformCreate, PlatformPatch, PlatformTourOut, PlatformOptionOut, PlatformOptionCreate, PlatformOptionPatch,
     PlatformTourCreate, PlatformTourUpdate,
     CommissionOut, CommissionCreate, DiscountOut, DiscountCreate, DiscountUpdate,
 )
@@ -17,6 +17,39 @@ router = APIRouter(tags=["platforms"])
 @router.get("/platforms", response_model=List[PlatformOut])
 def list_platforms(db: Session = Depends(get_db)):
     return db.query(Platform).all()
+
+
+@router.post("/platforms", response_model=PlatformOut, status_code=201)
+def create_platform(payload: PlatformCreate, db: Session = Depends(get_db)):
+    existing = db.query(Platform).filter(Platform.name == payload.name).first()
+    if existing:
+        raise HTTPException(status_code=409, detail="Platform with this name already exists")
+    
+    p = Platform(**payload.model_dump())
+    db.add(p)
+    db.commit()
+    db.refresh(p)
+    return p
+
+
+@router.patch("/platforms/{platform_id}", response_model=PlatformOut)
+def update_platform(platform_id: int, payload: PlatformPatch, db: Session = Depends(get_db)):
+    p = db.query(Platform).filter(Platform.platform_id == platform_id).first()
+    if not p:
+        raise HTTPException(status_code=404, detail="Platform not found")
+    
+    updates = payload.model_dump(exclude_unset=True)
+    if "name" in updates and updates["name"] != p.name:
+        clash = db.query(Platform).filter(Platform.name == updates["name"], Platform.platform_id != platform_id).first()
+        if clash:
+            raise HTTPException(status_code=409, detail="Platform with this name already exists")
+
+    for field, val in updates.items():
+        setattr(p, field, val)
+    
+    db.commit()
+    db.refresh(p)
+    return p
 
 
 # ── Platform Tours ──────────────────────────────────────────────────────────
